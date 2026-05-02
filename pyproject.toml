@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my_project"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.4",
+    "pandas>=3.0.2",
+    "pandas-stubs>=3.0.0.260204",
+    "scipy>=1.17.1",
+    "seaborn>=0.13.2",
+    "stats>=0.1.2a0",
+]
+
+[tool.setuptools.packages.find]
+include = ["data", "features", "bandits", "environment", "experiments", "metrics", "utils"]
+
+[tool.uv.workspace]
+members = [
+    "venv",
+]
