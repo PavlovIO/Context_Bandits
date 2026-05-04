@@ -1,5 +1,5 @@
 numpy
-stats
+scikit-learn
 
 pandas
 pandas-stubs

@@ -11,9 +11,9 @@ dependencies = [
     "numpy>=2.4.4",
     "pandas>=3.0.2",
     "pandas-stubs>=3.0.0.260204",
+    "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
     "seaborn>=0.13.2",
-    "stats>=0.1.2a0",
 ]
 
 [tool.setuptools.packages.find]
