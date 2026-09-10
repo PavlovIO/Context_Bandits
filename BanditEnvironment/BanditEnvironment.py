@@ -1,111 +1,73 @@
 import numpy as np
+from typing import Optional, Tuple
 
-class BanditEnvironment:
+class SyntheticEnvironment:  
     """
-    Class for modeling Context Bandit Enviroment
-    
-    Attributes:
-        arm_ctx (np.ndarray): arms context
-        user_ctx (np.ndarray): users context
-        theta (np.ndarray): true values
-        n_arms (int): number of arms
-        reward_noise_std (np.ndarray):
-        rng (numpy.random.Generator):
-    """
-    def __init__(self,
-                 arm_context: np.ndarray,             # shape (n_arms, d_a) 
-                 user_context: np.ndarray,            # shape (n_users, d_u) 
-                 true_weights: np.ndarray,            # shape (d_u+d_a)
-                 reward_noise_std: float = 0.0,
-                 seed: int | None = None
-    ) -> None:
+    Синтетическая среда для экспериментов, реализующая получение контекста, награды и оптимального действия.
+    Имеет три сценария влияния контекста на награду:
+        strong - награда сильно зависит только от контекста
+        weak - награда слабо зависит от контекста, так же зависит от базовой средней награды руки
+        noise - награда не зависит от контекста 
+    """ 
+    def __init__(self, K_arms: int, d: int, scenario: str = 'strong', 
+                 seed: Optional[int] = None):
         """
-        Initialize enviroment
-
         Args:
-            arm_context (np.ndarray): array (n_arms, d_a) of arms contexts
-            user_context (np.ndarray): array (n_users, d_u) of users contexts
-            true_weights (np.ndarray): array (d_u + d_a) of weights for true reward
-            reward_noise_std (float): 
-            seed (int): 
+            K_arms: количество действий (рук)
+            d: размерность контекста
+            scenario: сценарий ('strong', 'weak', 'noise')
         """
+        self.K_arms = K_arms
+        self.d = d
+        self.scenario = scenario
         self.rng = np.random.default_rng(seed=seed)
-        self.arm_ctx = arm_context
-        self.user_ctx = user_context
-        self.theta = true_weights
-        self.context_dim = user_context.shape[1] + arm_context.shape[1]
-        self.reward_noise_std = reward_noise_std
-
-        self.n_arms = self.arm_ctx.shape[0]
-        self.n_users = self.user_ctx.shape[0]
-
-    def reset(self, user_id: int) -> np.ndarray:
-        """Emulates new user and returns his context"""
-        if not (0 <= user_id < self.user_ctx.shape[0]):
-            raise ValueError(f"user_id {user_id} is out of bounds: [0, {self.user_ctx.shape[0]-1}]")
-        self.current_user = user_id
-        self.current_user_ctx = self.user_ctx[user_id].copy()
-        return self.current_user_ctx
-
-    def step(self, arm_id: int) -> float:
-        """Generates stochastic reward for chosen arm"""
-        if not hasattr(self, 'current_user_ctx'):
-            raise RuntimeError("Use reset(user_id) before step()")
-        if not (0 <= arm_id < self.arm_ctx.shape[0]):
-            raise ValueError(f"arm_id {arm_id} is out of bounds: [0, {self.arm_ctx.shape[0]-1}]")
-        x = np.concat([self.current_user_ctx, self.arm_ctx[arm_id]])
-        logits = self.theta @ x
-        p = 1 / (1 + np.exp(-logits))
-        if self.reward_noise_std != 0.0:
-            p = np.clip(p + self.rng.normal(0, self.reward_noise_std), 0.0, 1.0)
-        return float(self.rng.binomial(1, p))
-    
-    def get_expected_reward(self, arm_id: int) -> float:
-        "Returns expected reward for arm without noise"
-        if not hasattr(self, 'current_user_ctx'):
-            raise RuntimeError("Use reset(user_id) before get_expected_reward()")
-        if not (0 <= arm_id < self.arm_ctx.shape[0]):
-            raise ValueError(f"arm_id {arm_id} is out of bounds: [0, {self.arm_ctx.shape[0]-1}]")
-        x = np.concat([self.current_user_ctx, self.arm_ctx[arm_id]])
-        logits = self.theta @ x
-        p = 1.0 / (1.0 + np.exp(-logits))
-        return float(p)
-
-    def get_optimal_arm(self) -> int:
-        """Returns arm_id with max reward"""
-        if not hasattr(self, 'current_user_ctx'):
-            raise RuntimeError("Use reset(user_id) before get_optimal_arm()")
         
-        user_vec = np.tile(self.current_user_ctx, (self.n_arms, 1))
-        join_ctx = np.hstack([user_vec, self.arm_ctx])
-        logits = join_ctx @ self.theta
-        expected = np.clip(1.0 / (1.0 + np.exp(-logits)), 1e-12, 1.0 - 1e-12)
-        return int(np.argmax(expected))
-
-    def get_optimal_action_info(self) -> tuple[int, float]:
-        """Возвращает (optimal_arm_id, max_expected_reward) за один проход."""
-        if not hasattr(self, 'current_user_ctx'):
-            raise RuntimeError("Call reset(user_id) first")
+        if scenario == 'strong':
+            self.base_rewards = np.zeros(K_arms) 
+            self.thetas = self.rng.standard_normal((K_arms, d)) * 2.0
             
-        user_vec = np.tile(self.current_user_ctx, (self.n_arms, 1))
-        join_ctx = np.hstack([user_vec, self.arm_ctx])
-        logits = join_ctx @ self.theta
-        expected = 1.0 / (1.0 + np.exp(-logits))
+        elif scenario == 'weak':
+            self.base_rewards = self.rng.uniform(0.4, 0.9, K_arms)
+            self.thetas = self.rng.standard_normal((K_arms, d)) * 0.1
+            
+        elif scenario == 'noise':
+            self.base_rewards = self.rng.uniform(0.4, 0.9, K_arms)
+            self.thetas = np.zeros((K_arms, d))
+            
+        else:
+            raise ValueError(f"Unknown scenario: {scenario}. Use 'strong', 'weak', or 'noise'.")
+    
+    def get_context(self) -> np.ndarray:
+        return self.rng.standard_normal(self.d)
+    
+    def get_reward_and_optimal(self, arm_id: int, context: np.ndarray) -> Tuple[float, int, float]:
+        expected_rewards = self._compute_expected_rewards(context)
+
+        best_arm_id = int(np.argmax(expected_rewards))
+        best_reward = expected_rewards[best_arm_id]
+
+        actual_reward = float(self.rng.random() < expected_rewards[arm_id])
         
-        opt_idx = int(np.argmax(expected))
-        return opt_idx, float(expected[opt_idx])
-
-    def get_user_context(self, user_id: int) -> np.ndarray:
-        return self.user_ctx[user_id]
-
-    def get_arm_context(self, arm_id: int) -> np.ndarray:
-        return self.arm_ctx[arm_id]
-
-    def get_arm_contexts(self) -> np.ndarray:
-        return self.arm_ctx
+        return actual_reward, best_arm_id, best_reward
     
-    def get_user_contexts(self) -> np.ndarray:
-        return self.user_ctx
-
-
+    def _compute_expected_rewards(self, context: np.ndarray) -> np.ndarray:
+        linear_scores = np.dot(self.thetas, context)
+        scores = linear_scores + self.base_rewards
+        expected_rewards = self._sigmoid(scores)
+        
+        return expected_rewards
     
+    def _sigmoid(self, x: np.ndarray) -> np.ndarray:
+        return np.where(
+            x >= 0,
+            1 / (1 + np.exp(-x)),
+            np.exp(x) / (1 + np.exp(x))
+        )
+    
+    def get_true_parameters(self) -> dict:
+        return {
+            'thetas': self.thetas,
+            'base_rewards': self.base_rewards,
+            'scenario': self.scenario
+        }
+   

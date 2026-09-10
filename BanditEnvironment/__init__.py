@@ -1,4 +1,3 @@
-from .BanditEnvironment import BanditEnvironment
-from .ClusteredBanditEnvironment import ClusteredBanditEnvironment
+from .BanditEnvironment import SyntheticEnvironment
 
-__all__ = ['BanditEnvironment', 'ClusteredBanditEnvironment']
+__all__ = ['SyntheticEnvironment']

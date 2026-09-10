@@ -5,21 +5,14 @@ def make_movie_features_movie_lens(movies: pd.DataFrame,
                                    users: pd.DataFrame
                                    ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Makes matricies of demographic and content features from DataLense dataset
+    Предобработка признаков для датасета MovieLense 1M
+
+    Args:
+        movies: Dataframe с фильмами, колонки "MovieID","Title","Genres"
+        users: Dataframe с пользователями, колонки "UserID", "Gender", "Age", "Occupation","Zip-code"
     
-    Parameters
-    ----------
-    movies : pd.DataFrame
-    users : pd.DataFrame
-
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame]
-        DataFranes with features of **movies, users**
-
-        **movies** : Year_norm, Genres(one-hot)
-        
-        **users** : Gender(0F/1M), Age(1-7), Occupation(one-hot)
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame]: (movies, users)
     """
     target_genres = [
         'Action', 'Adventure', 'Animation', "Children's", 'Comedy', 'Crime',
@@ -29,43 +22,41 @@ def make_movie_features_movie_lens(movies: pd.DataFrame,
     users = users.copy()
     movies = movies.copy()
 
-    # users
-    # one-hot Gender
-    gender_map = {'M': 1, 'F': 0}
     users['Gender'] = (
         users['Gender']
-        .fillna('')
+        .fillna('M')
         .str.strip()
         .str.upper()
-        .map(gender_map)
-        .fillna(0)
-        .astype(int)
     )
-    users.drop(columns=['Zip-code'], inplace=True)
+    gender_dummies = pd.get_dummies(users['Gender'], prefix='Gender', dtype=int)
+    users = pd.concat([users, gender_dummies], axis=1)
+    users.drop(columns=['Gender', 'Zip-code'], inplace=True)
 
-    # obvious ordinal Age
-    age_map = {1: 1, 18: 2, 25: 3, 35: 4, 45: 5, 50: 6, 56: 7}
-    users['Age'] = (
-        users['Age']
-        .fillna(3)
-        .map(age_map)
-        .astype(int)
-    )
 
-    # one-hot occupation
+    age = users['Age'].fillna(users['Age'].median()).astype(int)
+    conditions = [
+        age < 20,
+        age.between(20, 29),
+        age.between(30, 39),
+        age.between(40, 49),
+        age.between(50, 59),
+        age >= 60
+    ]
+    choices = ['<20', '20-29', '30-39', '40-49', '50-69', '60+']
+    users['Age_group'] = np.select(conditions, choices, default='18-29')
+    age_dummies = pd.get_dummies(users['Age_group'], prefix='Age', dtype=int)  
+    users = pd.concat([users.drop(columns=['Age', 'Age_group']), age_dummies], axis=1)
+
     users = pd.get_dummies(users, columns=['Occupation'], prefix='Occ', dtype=int)
 
-    # movies
-    # extract separate Title and Year
+
     mask = movies['Title'].str.contains(r'\(\d{4}\)\s*$', na=False)
     movies.loc[mask, 'Year'] = movies.loc[mask, 'Title'].str.extract(r'\((\d{4})\)', expand=False)
     movies.loc[mask, 'Title'] = movies.loc[mask, 'Title'].str.replace(r'\s*\(\d{4}\)\s*$', '', regex=True).str.strip()
-    
-    # normalized year
+
     movies['Year'] = pd.to_numeric(movies['Year'], errors='coerce')
     movies['Year_norm'] = ((movies['Year'] - movies['Year'].mean()) / movies['Year'].std()).fillna(0.0)
 
-    # extract Genre and one-hot encode
     clean_genres = (
         movies['Genres']
         .fillna('')
@@ -74,7 +65,7 @@ def make_movie_features_movie_lens(movies: pd.DataFrame,
         .str.strip()
     )
     genre_dummies = clean_genres.str.get_dummies(sep='|').reindex(columns=target_genres, fill_value=0)
-    movies = pd.concat([movies[['Title', 'Year_norm','Genres']], genre_dummies], axis=1).drop(columns=['Genres'])
+    movies = pd.concat([movies[['Title', 'Year_norm', 'Genres']], genre_dummies], axis=1).drop(columns=['Genres'])
 
     movies.drop(columns=['Title'], inplace=True, errors='ignore')
     users.drop(columns=['UserID'], inplace=True)

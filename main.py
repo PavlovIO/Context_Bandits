@@ -1,61 +1,124 @@
 from data_loading import load_movielens
 from features import make_movie_features_movie_lens
-from bandits import LinUCBShared, LinTSShared, UCB1, ThompsonSampling
-from BanditEnvironment import BanditEnvironment
-from utils import ExperimentsManager, ExperimentConfig
-import pandas as pd
+from bandits import *
+from BanditEnvironment import SyntheticEnvironment
+from experiments import *
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-
-def main():
-    # get datasets and extract features
-    movies_df, ratings_df, users_df = load_movielens('.\\MovieLensData')
-    movies_f, users_f = make_movie_features_movie_lens(movies_df, users_df) # (n_arms, 19), (n_users, 23)
-    target_genres = [
-        'Action', 'Adventure', 'Animation', "Children's", 'Comedy', 'Crime',
-        'Documentary', 'Drama', 'Fantasy', 'Film-Noir', 'Horror', 'Musical',
-        'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western'
-    ]
-
-    user_scaler = StandardScaler()
-    arm_scaler = StandardScaler()
-
-    X_user_norm = user_scaler.fit_transform(users_f.values)
-    X_arm_norm  = arm_scaler.fit_transform(movies_f.values)
-
-    rng = np.random.default_rng(seed=42)
-    d_context = X_arm_norm.shape[1] + X_user_norm.shape[1]
-    true_weights = rng.normal(0, 0.05, size=d_context).astype(np.float32)
-
-    env = BanditEnviroment(X_arm_norm, X_user_norm, true_weights, seed=42)
-
-    LinUCBGrid: list[ExperimentConfig] = [
-        ExperimentConfig("LinUCB_alpha0.1", LinUCBShared, {"alpha": 0.1}),
-        ExperimentConfig("LinUCB_alpha0.2", LinUCBShared, {"alpha": 0.2}),
-        ExperimentConfig("LinUCB_alpha0.3", LinUCBShared, {"alpha": 0.3}),
-    ]
-    LinTSGrid: list[ExperimentConfig] = [
-        ExperimentConfig("LinTS_sigma0.05", LinTSShared, {"sigma": 0.05}),
-        ExperimentConfig("LinTS_sigma0.075", LinTSShared, {"sigma": 0.075}),
-        ExperimentConfig("LinTS_sigma0.1", LinTSShared, {"sigma": 0.1}),
-    ]
-
-    manager = ExperimentsManager(env, horizon=5000, n_runs=30, window=1000, seed=42, debug=False)
-    results = manager.run_exepriments(experiments=LinUCBGrid)
-    manager.plot_results(
-        results,
-        output_dir="experiments/LinUCBGrid",
-        window_size=1000,
-        figsize=(11,6)
-    )
-    results = manager.run_exepriments(experiments=LinTSGrid)
-    manager.plot_results(
-        results,
-        output_dir="experiments/LinTSGrid",
-        window_size=1000,
-        figsize=(11,6)
-    )
+import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
-    main()
+def run_synthetic_experiment():
+    K_arms = 30
+    d = 30
+    num_steps = 5000
+    num_runs = 30 
+    
+    scenarios = ['strong', 'weak', 'noise']
+    
+    for scenario in scenarios:
+        print(f"Сценарий: {scenario}")
+        
+        # Словарь для хранения статистики по всем запускам
+        all_results = {
+            'UCB1': [], 'TS': [], 'LinUCB': [], 'LinTS': []
+        }
+
+        for run in range(num_runs):
+            print(f"  Запуск {run + 1}/{num_runs}")
+
+
+            env = SyntheticEnvironment(K_arms=K_arms, d=d, scenario=scenario, seed=run)
+
+            policies = {
+                'UCB1': ucb1_policy(K_arms=K_arms, c=np.sqrt(2)/5, seed=run),
+                'TS': ts_policy(K_arms=K_arms, seed=run),
+                'LinUCB': linucb_policy(K_arms=K_arms, d=d, alpha=0.5, seed=run),
+                'LinTS': lints_policy(K_arms=K_arms, d=d, v=0.15, seed=run)
+            }
+            
+            for algo_name, policy in policies.items():
+                policy.reset()
+
+                mab = MAB(policy=policy, K_arms=K_arms, D_ctx=d)
+                
+                for step in range(num_steps):
+                    context = env.get_context()
+                    arm_id = mab.choose(context)
+                    reward, best_arm_id, best_reward = env.get_reward_and_optimal(arm_id, context)
+                    mab.update(arm_id, reward, best_arm_id, best_reward, context)
+                
+                all_results[algo_name].append(mab.get_statistics())
+
+        save_results(
+            results=all_results,
+            filepath=f'results/synth_{scenario}_5000_20.pkl',
+        )
+
+        plot_results(all_results, scenario_name=scenario, save_dir="coursework_plots", window=500)
+
+def run_movielens_replay_all_policies(max_epochs: int = 5, num_runs: int = 5, seed: int = 42):
+    movies, ratings, users = load_movielens("Context_Bandits\\MovieLensData")
+    movies_feat, users_feat = make_movie_features_movie_lens(movies, users)
+
+    top_k_movies = 30
+    top_movies = ratings['MovieID'].value_counts().head(top_k_movies).index.tolist()
+    
+    ratings_data = ratings[ratings['MovieID'].isin(top_movies)].copy()
+    ratings_data['Reward'] = (ratings_data['Rating'] >= 5).astype(int)
+    
+    users_feat.index = users['UserID']
+    d_ctx = users_feat.shape[1]
+    
+    baseline_ctr = ratings_data['Reward'].mean()
+    print(f"Baseline CTR (случайная политика): {baseline_ctr:.3f}")
+    print(f"Всего строк в логе: {len(ratings_data)}")
+    
+    all_results = {
+        'UCB1': [], 
+        'TS': [], 
+        'LinUCB': [],
+        'LinTS': []
+    }
+    
+    print(f"\nЗапуск Replay с Recycling ({num_runs} запусков, до {max_epochs} эпох)")
+    
+    for run in range(num_runs):
+
+        print(f"Запуск {run + 1}/{num_runs}")
+
+        
+        current_seed = seed + run
+        
+        # Создаем политики для текущего запуска
+        policies = {
+            'UCB1': ucb1_policy(K_arms=top_k_movies, c=np.sqrt(2), seed=current_seed),
+            'TS': ts_policy(K_arms=top_k_movies, seed=current_seed),
+            'LinUCB': linucb_policy(K_arms=top_k_movies, d=d_ctx, alpha=0.5, seed=current_seed),
+            'LinTS': lints_policy(K_arms=top_k_movies, d=d_ctx, v=0.15, seed=current_seed)
+        }
+        
+        # Запускаем каждую политику через унифицированную функцию
+        for algo_name, policy in policies.items():
+            stats = run_single_replay_experiment(
+                policy=policy,
+                algo_name=algo_name,
+                ratings_data=ratings_data,
+                users_feat=users_feat,
+                max_epochs=max_epochs,
+                seed=current_seed,
+                verbose=True
+            )
+            all_results[algo_name].append(stats)
+    
+    return all_results, baseline_ctr
+
+
+
+if __name__ == '__main__':
+
+    run_synthetic_experiment()
+
+
+
+
+    

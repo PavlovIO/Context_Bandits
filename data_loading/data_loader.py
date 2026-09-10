@@ -3,46 +3,39 @@ import os
 import pandas as pd
 import numpy as np
 
-def load_movielens(data_dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_movielens(data_dir: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: 
     '''
-    Function to load MovieLense Dataset
+    Функция для загрузки датасета MovieLens 1M
     
-    Parameters
-    ----------
-    data_dir : str
-               Dircetory of dataset with files movies.dat, ratings.dat, users.dat
+    Args:
+        data_dir (str): Папка с файлами movies.dat, ratings.dat, users.dat
     
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-               DataFrames in order **movies, ratings, users**
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: Датафреймы в последовательности movies, ratings, users
     '''
-
-    def parse_data_file(filepath: str, column_names: list[str]) -> pd.DataFrame:
-        '''
-        modified read_csv
-        '''
-        return pd.read_csv(
-            filepath,
+    
+    ratings = pd.read_csv(
+            os.path.join(data_dir, "ratings.dat"),
             sep='::',
-            names=column_names,
+            names=["UserID","MovieID","Rating","Timestamp"],
             engine='python',
             encoding='latin-1'
         )
-    
-    ratings = parse_data_file(
-        os.path.join(data_dir, "ratings.dat"),
-        column_names=["UserID","MovieID","Rating","Timestamp"]
-    )
 
-    users = parse_data_file(
-        os.path.join(data_dir, "users.dat"),
-        column_names=["UserID","Gender","Age","Occupation","Zip-code"]
-    )
+    users = pd.read_csv(
+            os.path.join(data_dir, "users.dat"),
+            sep='::',
+            names=["UserID", "Gender", "Age", "Occupation","Zip-code"],
+            engine='python',
+            encoding='latin-1'
+        )
 
-    movies = parse_data_file(
-        os.path.join(data_dir, "movies.dat"),
-        column_names=["MovieID","Title","Genres"]
-    )
+    movies = pd.read_csv(
+            os.path.join(data_dir, "movies.dat"),
+            sep='::',
+            names=["MovieID","Title","Genres"],
+            engine='python',
+            encoding='latin-1'
+        )
 
-    return movies, ratings, users
+    return movies, ratings, users 

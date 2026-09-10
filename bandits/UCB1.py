@@ -1,45 +1,54 @@
-from .BaseContextBandit import BaseContextBandit
 import numpy as np
 from typing import Optional
 
-class UCB1(BaseContextBandit):
-    def __init__(self,
-                  n_arms: int,
-                  d_ctx: Optional[int] = None, 
-                  seed: Optional[int] = None,
-                  c: int = np.sqrt(2)
-    ) -> None:
-        super().__init__(n_arms, 0, seed)
+class ucb1_policy():
+    def __init__(self, K_arms: int, c: float = np.sqrt(2), seed: Optional[int] = None):
+        """
+        Args:
+            K_arms: количество рук
+            c: гиперпараметр
+        """
+        self.rng = np.random.default_rng(seed=seed)
+
         self.c = c
-        self.reset()
+        self.K_arms = K_arms
 
-    def reset(self) -> None:
-        self.initialized = False
-        self.arm_sum = np.zeros(self.n_arms)
-        self.arm_choices = np.zeros(self.n_arms)
+        self.arm_sum = np.zeros(self.K_arms)
+        self.arm_choices = np.zeros(self.K_arms)
 
-    def choose(self, 
-               user_ctx: Optional[np.ndarray] = None, 
-               arms_ctx: Optional[np.ndarray] = None) -> int:
-        if not self.initialized:
-            arm = self.t % self.n_arms
-            if self.t+1 >= self.n_arms:
-                self.initialized = True
-            return arm
-
-        avg = self.arm_sum / self.arm_choices
-        bonus = self.c * np.sqrt(np.log(self.t + 1) / self.arm_choices)
-        ucb = avg + bonus
-        return int(np.argmax(ucb))
+        self.arms_idx = list(range(self.K_arms))
     
-    def update(self, 
-               reward: float, 
-               arm_id: Optional[int] = None,
-               user_ctx: Optional[np.ndarray] = None, 
-               arm_ctx: Optional[np.ndarray] = None) -> None:
-        assert (isinstance(arm_id, int))
-        self.arm_sum[arm_id] = (self.arm_sum[arm_id]+reward)
-        self.arm_choices[arm_id] += 1
+    def set_arms_idx(self, idx):
+        self.arms_idx = list(idx)
+
+    def get_arms_idx(self):
+        return self.arms_idx
+
+    def choose(self, context: Optional[np.ndarray] = None):
+        if not all(self.arm_choices):
+            arm_id = int(np.argmin(self.arm_choices))
+            return self.arms_idx[arm_id]
+
+        total_steps = sum(self.arm_choices)
+        avg = self.arm_sum / self.arm_choices
+        ucb = self.c * np.sqrt(np.log(total_steps) / self.arm_choices)
+        p = avg + ucb
+
+        max_ucb = np.max(p)
+        candidate_arms = np.where(p == max_ucb)[0]
+        arm = int(self.rng.choice(candidate_arms))
+        return self.arms_idx[arm]
+
+    def update(self, arm_id: int, reward: float, context: Optional[np.ndarray] = None):
+        updated_arm = self.arms_idx.index(arm_id)
+
+        self.arm_choices[updated_arm] += 1
+        self.arm_sum[updated_arm] += reward
+
+    def reset(self):
+        self.arm_sum = np.zeros(self.K_arms)
+        self.arm_choices = np.zeros(self.K_arms)
+        self.arms_idx = list(range(self.K_arms))
         
         
 
