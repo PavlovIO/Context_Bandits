@@ -36,6 +36,7 @@ python main.py
 Результаты (графики .png и сохраненные метрики .pkl) автоматически сохраняются в директорию results/.
 
 ## Структура проекта
+```text
 .
 ├── bandits/               # Реализация политик (LinUCB, LinTS, UCB1, TS)
 ├── bandit_environment/    # Модели сред (SyntheticEnvironment)
@@ -48,7 +49,7 @@ python main.py
 ├── DataAnalysis.ipynb     # EDA и визуальный анализ датасета
 ├── pyproject.toml         # Конфигурация проекта и зависимости
 └── README.md              # Этот файл
-
+```
 ## Ключевые результаты
 На датасете MovieLens 1M при горизонте планирования 3000 шагов:
 - **Baseline** (случайная политика): CTR ≈ 0.454
