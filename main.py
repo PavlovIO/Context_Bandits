@@ -1,11 +1,13 @@
 from data_loading import load_movielens
 from features import make_movie_features_movie_lens
 from bandits import *
-from BanditEnvironment import SyntheticEnvironment
+from bandit_environment import SyntheticEnvironment
 from experiments import *
 import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).parent
+DATA_DIR = PROJECT_ROOT / "MovieLensData"
 
 def run_synthetic_experiment():
     K_arms = 30
@@ -57,7 +59,7 @@ def run_synthetic_experiment():
         plot_results(all_results, scenario_name=scenario, save_dir="coursework_plots", window=500)
 
 def run_movielens_replay_all_policies(max_epochs: int = 5, num_runs: int = 5, seed: int = 42):
-    movies, ratings, users = load_movielens("Context_Bandits\\MovieLensData")
+    movies, ratings, users = load_movielens(str(DATA_DIR))
     movies_feat, users_feat = make_movie_features_movie_lens(movies, users)
 
     top_k_movies = 30
@@ -117,6 +119,9 @@ def run_movielens_replay_all_policies(max_epochs: int = 5, num_runs: int = 5, se
 if __name__ == '__main__':
 
     run_synthetic_experiment()
+
+    ml1m_results, baseline_ctr = run_movielens_replay_all_policies()
+    plot_replay_results(ml1m_results, baseline_ctr)
 
 
 
